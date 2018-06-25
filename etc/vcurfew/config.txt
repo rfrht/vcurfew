@@ -1,0 +1,6 @@
+INTERFACE=eth0.4
+TIMEZONE=America/Sao_Paulo
+ADMIN_PASS=
+URLPREFIX=
+SQDB=/etc/vcurfew/vcurfew
+SQLITEHISTORY=
