@@ -8,6 +8,22 @@ echo ""
 source /etc/vcurfew/config.txt
 
 
+# Disable internationalizations (and potential syntax issues)
+for i in LC_PAPER LC_MONETARY LC_NUMERIC LC_MEASUREMENT LC_TIME LANG LANGUAGE TZ ; do 
+   unset $i
+done
+
+
+# Test if sqlite has the correct permissions
+if sqlite $SQDB "CREATE TABLE test(test,integer)" ; then
+   sqlite $SQDB "DROP TABLE test"
+else
+   echo "sqlite does not have write permission in file $SQDB and its directory."
+   echo "Check permissions and try again."
+   exit 1
+fi
+
+
 # Translate the IP address to a MAC address. Sanitizes the values.
 MAC=$(arp -an | awk "match (\$0,/$REMOTE_ADDR/) {print \$4}" | tr -dc '[:xdigit:]' | tr '[:lower:]' '[:upper:]' | cut -c -12)
 echo "MAC equals $MAC"
@@ -16,7 +32,7 @@ echo "MAC equals $MAC"
 # Check if is there a user assigned to that MAC address. Loads the USER variable.
 USER=$(sqlite $SQDB "SELECT user FROM systems WHERE mac='$MAC'")
 if [ -z $USER ] ; then
-   echo "MAC $MAC not found"
+   echo "MAC $MAC not found - Not managed."
    exit 1
 else
    echo "User $USER has MAC $MAC."
@@ -46,12 +62,16 @@ WKND_DAYS="Sat Sun"
 
 
 # Function - Unlocks internet, write the token and schedules the next
-# curfew implementation.
+# curfew implementation. Currently this is only a stub (echoing).
 net_unlock() {
-echo "INSERT INTO tokens VALUES ('$USER', datetime('now', 'localtime'), 1);" | sqlite /etc/vcurfew/vcurfew
+sqlite $SQDB "INSERT INTO tokens VALUES ('$USER', datetime('now', 'localtime'), 1)"
 for i in $(sqlite $SQDB "SELECT mac FROM systems WHERE user='$USER'" | sed 's/..\B/&:/g') ; do
+# TODO: ENSURE THAT BLOCKING RULE EXISTS AND IS PRESENT.
+# if ! iptables -nvL | grep "MAC $i" ; then
+#    iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j DROP
+# fi
    echo "echo sudo /sbin/iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j ACCEPT"
-   echo "echo sudo /sbin/iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j DROP" >> /dev/shm/$UUID
+   echo "echo sudo /sbin/iptables -D FORWARD -i $INTERFACE -m mac --mac-source $i -j ACCEPT" >> /dev/shm/$UUID
 done
 echo rm /dev/shm/$UUID >> /dev/shm/$UUID
 }
@@ -80,23 +100,13 @@ fi
 
 # Checks if is there any already active token
 TOKEN_EPOCH=$(TZ="$TIMEZONE" sqlite $SQDB "SELECT MAX(strftime ('%s', token_epoch, )) FROM tokens WHERE token_epoch >= DATE('now', 'localtime') AND user = '$USER'" )
-if [ -z $TOKEN_EPOCH ] ; then
-   echo "No active tokens, moving on"
-   echo "Token epoch = $TOKEN_EPOCH"
-   let GOOD_THRU="$TOKEN_EPOCH+3600*$AUTHORIZED_HOURS"
-   EPOCH_NOW=$(date +"%s")
-   let SECONDS_VALID="$GOOD_THRU-$EPOCH_NOW"
-   echo "So this is it: Current epoch $EPOCH_NOW, Token issued at $TOKEN_EPOCH and valid until $GOOD_THRU. Valid for more $SECONDS_VALID seconds."
-else
-   echo "Token epoch value: $TOKEN_EPOCH"
-   let "GOOD_THRU=$TOKEN_EPOCH+3600*$AUTHORIZED_HOURS"
-   EPOCH_NOW=$(date +"%s")
-   let SECONDS_VALID="$GOOD_THRU-$EPOCH_NOW"
-   echo "So this is it: Current epoch $EPOCH_NOW, Token issued at $TOKEN_EPOCH and valid until $GOOD_THRU. Valid for more $SECONDS_VALID seconds."
-   if [[ $EPOCH_NOW -gt $TOKEN_EPOCH && $EPOCH_NOW -lt $GOOD_THRU ]] ; then
-      echo "There's a valid and active token. Exiting, no action taken."
-      exit 0
-   fi
+let GOOD_THRU="$TOKEN_EPOCH+3600*$AUTHORIZED_HOURS"
+EPOCH_NOW=$(date +"%s")
+let SECONDS_VALID="$GOOD_THRU-$EPOCH_NOW"
+echo "Current epoch $EPOCH_NOW, Token issued at $TOKEN_EPOCH and valid until $GOOD_THRU. Valid for more $SECONDS_VALID seconds."
+if [[ $EPOCH_NOW -gt $TOKEN_EPOCH && $EPOCH_NOW -lt $GOOD_THRU ]] ; then
+   echo "There's a valid and active token. Exiting, no action taken."
+   exit 0
 fi
 
 
