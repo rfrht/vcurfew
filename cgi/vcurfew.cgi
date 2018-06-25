@@ -88,7 +88,7 @@ if [ -z $TOKEN_EPOCH ] ; then
    let SECONDS_VALID="$GOOD_THRU-$EPOCH_NOW"
    echo "So this is it: Current epoch $EPOCH_NOW, Token issued at $TOKEN_EPOCH and valid until $GOOD_THRU. Valid for more $SECONDS_VALID seconds."
 else
-   echo Valor do epoch = $TOKEN_EPOCH
+   echo "Token epoch value: $TOKEN_EPOCH"
    let "GOOD_THRU=$TOKEN_EPOCH+3600*$AUTHORIZED_HOURS"
    EPOCH_NOW=$(date +"%s")
    let SECONDS_VALID="$GOOD_THRU-$EPOCH_NOW"
@@ -118,8 +118,8 @@ if [ $HOURS_UNTIL_EOD -le $AUTHORIZED_HOURS ] ; then
    net_unlock
    cat /dev/shm/$UUID | TZ=$TIMEZONE at $HOUR_EOD:00
 else
-   echo "Authorizing $AUTHORIZED_HOURS hours, good thru $(TZ=$TIMEZONE date -d "+2 hours" +"%Hh%M")."
+   echo "Authorizing $AUTHORIZED_HOURS hours, good thru $(TZ=$TIMEZONE date -d "+$AUTHORIZED_HOURS hours" +"%Hh%M")."
    net_unlock
-   cat /dev/shm/$UUID | at NOW + 2 hours
+   cat /dev/shm/$UUID | at NOW + $AUTHORIZED_HOURS hours
 fi
 
