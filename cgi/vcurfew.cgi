@@ -4,122 +4,122 @@ echo "Content-type: text/plain"
 echo ""
 
 
-# Carrega setup inicial
+# Load initial setup
 source /etc/vcurfew/config.txt
 
 
-# Traduz o IP para um MAC address. Sanitiza os valores.
+# Translate the IP address to a MAC address. Sanitizes the values.
 MAC=$(arp -an | awk "match (\$0,/$REMOTE_ADDR/) {print \$4}" | tr -dc '[:xdigit:]' | tr '[:lower:]' '[:upper:]' | cut -c -12)
-echo MAC vale $MAC
+echo "MAC equals $MAC"
 
 
-# Verifica se existe usuario atribuido ao MAC. Carrega variavel USER.
+# Check if is there a user assigned to that MAC address. Loads the USER variable.
 USER=$(sqlite $SQDB "SELECT user FROM systems WHERE mac='$MAC'")
 if [ -z $USER ] ; then
-   echo "MAC $MAC nao encontrado."
+   echo "MAC $MAC not found"
    exit 1
 else
-   echo USER $USER tem mac $MAC.
+   echo "User $USER has MAC $MAC."
 fi
 
 
-# Busca quem eh usuario dono do MAC. Carrega suas configuracoes.
+# Looks up the user configuration and characterics
 CONFIG=($(sqlite -separator " " $SQDB "SELECT * FROM users WHERE user='$USER'" ))
 if [ -z $CONFIG ] ; then
-   echo "Isso nao devia acontecer - Usuario $USER existe em systems e nao existe em users"
+   echo "This should not happen - user $USER exists in 'systems' and does not exist in 'users'."
    exit 1
 fi
-echo Config vale: ${CONFIG[*]}
-echo Array: USER - DUR/SEM - DUR/FDS - HR/INI - HR/FIM - TOKENS/SEM - TOKENS/FDS
+echo "Config array result: ${CONFIG[*]}"
+echo "Array syntax: USER - DUR/WKDY - DUR/WKND - HR/INI - HR/EOD - TOKENS/WKDY - TOKENS/WKND"
 
 
-# Exporta array para variaveis individuais
-DURSEM=${CONFIG[1]}
-DURFDS=${CONFIG[2]}
-HRINI=${CONFIG[3]}
-HRFIM=${CONFIG[4]}
-TOKENSEM=${CONFIG[5]}
-TOKENFDS=${CONFIG[6]}
-HR_AGORA=$(TZ="$TIMEZONE" date +"%H")
-HOJE=$(TZ="$TIMEZONE" date +"%a")
-FDS="Sat Sun"
+# Transforms the array into human-readable variables.
+DUR_WKDY=${CONFIG[1]}
+DUR_WKND=${CONFIG[2]}
+HOUR_INI=${CONFIG[3]}
+HOUR_EOD=${CONFIG[4]}
+TOKEN_WKDY=${CONFIG[5]}
+TOKEN_WKND=${CONFIG[6]}
+HOUR_NOW=$(TZ="$TIMEZONE" date +"%H")
+TODAY=$(TZ="$TIMEZONE" date +"%a")
+WKND_DAYS="Sat Sun"
 
 
-# Funcao que implementa o desbloqueio, gravacao do token e agenda desbloqueio
-# para cada um dos MACs
-montabloqueio() {
+# Function - Unlocks internet, write the token and schedules the next
+# curfew implementation.
+net_unlock() {
 echo "INSERT INTO tokens VALUES ('$USER', datetime('now', 'localtime'), 1);" | sqlite /etc/vcurfew/vcurfew
 for i in $(sqlite $SQDB "SELECT mac FROM systems WHERE user='$USER'" | sed 's/..\B/&:/g') ; do
-   echo echo sudo /sbin/iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j ACCEPT
-   echo echo sudo /sbin/iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j DROP >> /dev/shm/$UUID
+   echo "echo sudo /sbin/iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j ACCEPT"
+   echo "echo sudo /sbin/iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j DROP" >> /dev/shm/$UUID
 done
 echo rm /dev/shm/$UUID >> /dev/shm/$UUID
 }
 
 
-# Verifica se o pedido de token esta dentro do horario autorizado
-if [[ $HR_AGORA -lt $HRINI || $HR_AGORA -ge $HRFIM ]] ; then
-   echo Fora de horario
+# Is the access request during authorized hours?
+if [[ $HOUR_NOW -lt $HOUR_INI || $HOUR_NOW -ge $HOUR_EOD ]] ; then
+   echo "You are outside the authorized hours. Request access between $HOUR_INI and $HOUR_EOD"
    exit 0
 else
-   echo Boa, dentro do horario permitido. Valendo.
+   echo "Valid time; moving on"
 fi
 
 
-# Classifica se está valendo regra de FDS ou Dia de Semana
-if [[ $FDS =~ $HOJE ]] ; then
-   echo DOW: FDS
-   HRS_LIBERADAS=$DURFDS
-   TOKENS_AUTHORIZED=$TOKENFDS
+# Checks for weekdays or weekends
+if [[ $WKND_DAYS =~ $TODAY ]] ; then
+   echo "DOW: Weekend"
+   AUTHORIZED_HOURS=$DUR_WKND
+   TOKENS_AUTHORIZED=$TOKEN_WKND
 else
-   echo DOW: DISEM
-   HRS_LIBERADAS=$DURSEM
-   TOKENS_AUTHORIZED=$TOKENSEM
+   echo "DOW: Weekday"
+   AUTHORIZED_HOURS=$DUR_WKDY
+   TOKENS_AUTHORIZED=$TOKEN_WKDY
 fi
 
 
-# Verifica se tem token ativo
+# Checks if is there any already active token
 TOKEN_EPOCH=$(TZ="$TIMEZONE" sqlite $SQDB "SELECT MAX(strftime ('%s', token_epoch, )) FROM tokens WHERE token_epoch >= DATE('now', 'localtime') AND user = '$USER'" )
 if [ -z $TOKEN_EPOCH ] ; then
-   echo Nao emitiu token hoje, segue processamento
-   echo Valor do epoch = $TOKEN_EPOCH
-   let "VALIDO_ATE=$TOKEN_EPOCH+3600*$HRS_LIBERADAS"
-   EPOCH_AGORA=$(date +"%s")
-   let SEGUNDOS_VALIDADE="$VALIDO_ATE-$EPOCH_AGORA"
-   echo Entao ficou: Agora $EPOCH_AGORA, Emitido $TOKEN_EPOCH e validade $VALIDO_ATE. Vale por mais $SEGUNDOS_VALIDADE segundos.
+   echo "No active tokens, moving on"
+   echo "Token epoch = $TOKEN_EPOCH"
+   let GOOD_THRU="$TOKEN_EPOCH+3600*$AUTHORIZED_HOURS"
+   EPOCH_NOW=$(date +"%s")
+   let SECONDS_VALID="$GOOD_THRU-$EPOCH_NOW"
+   echo "So this is it: Current epoch $EPOCH_NOW, Token issued at $TOKEN_EPOCH and valid until $GOOD_THRU. Valid for more $SECONDS_VALID seconds."
 else
    echo Valor do epoch = $TOKEN_EPOCH
-   let "VALIDO_ATE=$TOKEN_EPOCH+3600*$HRS_LIBERADAS"
-   EPOCH_AGORA=$(date +"%s")
-   let SEGUNDOS_VALIDADE="$VALIDO_ATE-$EPOCH_AGORA"
-   echo Entao ficou: Agora $EPOCH_AGORA, Emitido $TOKEN_EPOCH e validade $VALIDO_ATE. Vale por mais $SEGUNDOS_VALIDADE segundos.
-   if [[ $EPOCH_AGORA -gt $TOKEN_EPOCH && $EPOCH_AGORA -lt $VALIDO_ATE ]] ; then
-      echo Tem token ativo. Saindo.
+   let "GOOD_THRU=$TOKEN_EPOCH+3600*$AUTHORIZED_HOURS"
+   EPOCH_NOW=$(date +"%s")
+   let SECONDS_VALID="$GOOD_THRU-$EPOCH_NOW"
+   echo "So this is it: Current epoch $EPOCH_NOW, Token issued at $TOKEN_EPOCH and valid until $GOOD_THRU. Valid for more $SECONDS_VALID seconds."
+   if [[ $EPOCH_NOW -gt $TOKEN_EPOCH && $EPOCH_NOW -lt $GOOD_THRU ]] ; then
+      echo "There's a valid and active token. Exiting, no action taken."
       exit 0
    fi
 fi
 
 
-# Verifica se tem credito para tokens
+# Check for token balance
 TOKENS_CONSUMED_TODAY=$(TZ="$TIMEZONE" sqlite $SQDB "SELECT COUNT(*) FROM tokens WHERE DATE(token_epoch, 'localtime') >= DATE('now', 'localtime') AND user = '$USER'")
-echo Tokens usados hoje: $TOKENS_CONSUMED_TODAY
-echo Tokens autorizados: $TOKENS_AUTHORIZED
+echo "Tokens Consumed Today: $TOKENS_CONSUMED_TODAY"
+echo "Total allowed Tokens for today: $TOKENS_AUTHORIZED"
 if [ $TOKENS_CONSUMED_TODAY -ge $TOKENS_AUTHORIZED ] ; then
-   echo "Voce consumiu sua cota do dia! Blocos autorizados: $TOKENS_AUTHORIZED, blocos consumidos: $TOKENS_CONSUMED_TODAY"
+   echo "You are out of token quota. Allowed tokens: $TOKENS_AUTHORIZED, consumed tokens: $TOKENS_CONSUMED_TODAY"
    exit 1
 fi
 
 
-# Liberador de token. Escolhe logica de proximo do fim do periodo de validade
+# Issue the access token
 UUID=$(uuid)
-let "RESTANTE=$HRFIM-$HR_AGORA"
-if [ $RESTANTE -le $HRS_LIBERADAS ] ; then
-   echo Encerrando lojinha as $HRFIM horas.
-   montabloqueio
-   cat /dev/shm/$UUID | TZ=$TIMEZONE at $HRFIM:00
+let "HOURS_UNTIL_EOD=$HOUR_EOD-$HOUR_NOW"
+if [ $HOURS_UNTIL_EOD -le $AUTHORIZED_HOURS ] ; then
+   echo "Access allowed until $HOUR_EOD hours".
+   net_unlock
+   cat /dev/shm/$UUID | TZ=$TIMEZONE at $HOUR_EOD:00
 else
-   echo Entregando token de $HRS_LIBERADAS horas, valido ate as $(TZ=$TIMEZONE date -d "+2 hours" +"%Hh%M").
-   montabloqueio
+   echo "Authorizing $AUTHORIZED_HOURS hours, good thru $(TZ=$TIMEZONE date -d "+2 hours" +"%Hh%M")."
+   net_unlock
    cat /dev/shm/$UUID | at NOW + 2 hours
 fi
 
