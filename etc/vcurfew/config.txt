@@ -2,5 +2,5 @@ INTERFACE=eth0.4
 TIMEZONE=America/Sao_Paulo
 ADMIN_PASS=
 URLPREFIX=
-SQDB=/etc/vcurfew/vcurfew
+SQDB=/etc/vcurfew/vcurfew.db
 SQLITEHISTORY=
