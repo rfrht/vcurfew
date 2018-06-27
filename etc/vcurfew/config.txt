@@ -4,3 +4,4 @@ ADMIN_PASS=
 URLPREFIX=
 SQDB=/etc/vcurfew/vcurfew.db
 SQLITEHISTORY=
+TESTWRITE=no

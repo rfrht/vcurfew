@@ -1,9 +1,10 @@
 #!/bin/bash
 
-set -x
+set -e -x
 
 echo "Content-type: text/plain"
 echo ""
+
 
 # Load initial setup
 source /etc/vcurfew/config.txt
@@ -19,15 +20,16 @@ for i in LC_PAPER LC_MONETARY LC_NUMERIC LC_MEASUREMENT LC_TIME LANG LANGUAGE TZ
 done
 
 
-# Test if sqlite has the correct permissions
-if sqlite $SQDB "CREATE TABLE test(test,integer)" ; then
-   sqlite $SQDB "DROP TABLE test"
-else
-   echo "sqlite does not have write permission in file $SQDB and its directory."
-   echo "Check permissions and try again."
-   exit 1
+if [ $TESTWRITE == "yes" ] ; then
+   # Test if sqlite has the correct permissions
+   if sqlite $SQDB "CREATE TABLE test(test,integer)" ; then
+      sqlite $SQDB "DROP TABLE test"
+   else
+      echo "sqlite does not have write permission in file $SQDB and its directory."
+      echo "Check permissions and try again."
+      exit 1
+   fi
 fi
-
 
 # Translate the IP address to a MAC address. Sanitizes the values.
 MAC=$(arp -an $REMOTE_ADDR | awk '{gsub(/:/, "", $4); print toupper($4)}')
