@@ -52,7 +52,7 @@ First thing, initialize your `sqlite` database:
 Create the tables:
 
     sqlite> CREATE TABLE history(user VARCHAR (8), epoch_consumed INTEGER, token_type TINYINT);
-    sqlite> CREATE TABLE systems(mac VARCHAR (8), friendly VARCHAR (8), user VARCHAR (8));
+    sqlite> CREATE TABLE systems(mac VARCHAR (12), friendly VARCHAR (8), user VARCHAR (8));
     sqlite> CREATE TABLE tokens(user VARCHAR (8), token_epoch timestamp, token_type TINYINT);
     sqlite> CREATE TABLE users(user VARCHAR (8), duration_week INTEGER, duration_weekend INTEGER,
        ...>                    time_start INTEGER, time_end INTEGER, tokens_week INTEGER,
@@ -62,7 +62,45 @@ And to quit, type dot-q:
 
     sqlite> .q
 
+## The Database Schema
+
+### `systems`
+The `systems` table enumerates all devices that are subjected to `vcurfew` control.
+The structure of the `systems` table is comprised of: 
+
+* `mac` - The MAC address (all caps, 12-character, no colons) of the device;
+* `friendly`- Friendly Name for the device (8 character); 
+* `user` - username of the device owner (which must correlate to the `users` table).
+
+### `users`
+The `users` tables describes the authorized usage pattern of the users (and devices).
+A user record contains the following informations:
+
+* `user` - a 8-character unique user name, which is correlated to the devices described in systems table;
+* `duration_week` - How long does a weekday token last;
+* `duration_weekend` - How long does a weekend token last;
+* `time_start` - At what time can the user start requesting tokens (and use the internet). Format: 00-24, local time;
+* `time_end` - At what time should a token be revoked and inhibit new token requests. Format: 00-24, local time;
+* `tokens_week` - How many tokens can a user request per weekday
+* `tokens_weekend` - How many tokens can the user request during the weekend.
+
+### A example.
+Borrowing from the opening project description, this example describes the configuration of Yasmin user, which has two devices, can use internet from 9a-10p, entitled to 2 tokens of two hours each during weekdays, and three tokens of 3 hours during weekends.
+
+In the `users` table:
+
+    sqlite> SELECT * FROM users WHERE user = "yasmin";
+    yasmin|2|3|9|22|2|3
+
+And then, the `systems` table:
+
+    sqlite> SELECT * FROM systems WHERE user = "yasmin";
+    77:88:99:AA:BB:CC|ipad-yaya|yasmin
+    DD:EE:FF:00:AA:BB|iphone-yaya|yasmin
+
+
 ## TODO
+* Describe config
 * Web UI for user
 * Web UI for admin
 * User Balance web page
