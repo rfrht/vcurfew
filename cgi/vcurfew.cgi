@@ -1,11 +1,16 @@
-#!/bin/bash -x
+#!/bin/bash
+
+set -x
 
 echo "Content-type: text/plain"
 echo ""
 
-
 # Load initial setup
 source /etc/vcurfew/config.txt
+
+
+# Redirect STDERR to STDOUT, so errors are printed in the resulting page.
+exec 2>&1
 
 
 # Disable internationalizations (and potential syntax issues)
@@ -25,7 +30,7 @@ fi
 
 
 # Translate the IP address to a MAC address. Sanitizes the values.
-MAC=$(arp -an | awk "match (\$0,/$REMOTE_ADDR/) {print \$4}" | tr -dc '[:xdigit:]' | tr '[:lower:]' '[:upper:]' | cut -c -12)
+MAC=$(arp -an $REMOTE_ADDR | awk '{gsub(/:/, "", $4); print toupper($4)}')
 echo "MAC equals $MAC"
 
 
