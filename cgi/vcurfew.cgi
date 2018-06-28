@@ -14,6 +14,22 @@ else
 fi
 
 
+# Prepare debug messages parsing
+log.debug () {
+if [ $DEBUG == "true" ] ; then
+   set -e -x
+   echo DEBUG: $@
+fi
+}
+
+log.error () {
+echo ERROR: $@
+}
+
+print.html () {
+   echo "<H2><P>$@</P></H2>"
+}
+
 # Load initial setup
 source /etc/vcurfew/config.txt
 
@@ -38,8 +54,8 @@ if [ $TESTWRITE == "yes" ] ; then
    if sqlite $SQDB "CREATE TABLE test(test,integer)" ; then
       sqlite $SQDB "DROP TABLE test"
    else
-      echo "sqlite does not have write permission in file $SQDB and its directory."
-      echo "Check permissions and try again."
+      log.error "sqlite does not have write permission in file $SQDB and its directory."
+      log.error "Check permissions and try again."
       exit 1
    fi
 fi
@@ -47,27 +63,27 @@ fi
 
 # Translate the IP address to a MAC address. Sanitizes the values.
 MAC=$(arp -an $REMOTE_ADDR | awk '{gsub(/:/, "", $4); print toupper($4)}')
-echo "MAC equals $MAC"
+log.debug "MAC equals $MAC"
 
 
 # Check if is there a user assigned to that MAC address. Loads the USER variable.
 USER=$(sqlite $SQDB "SELECT user FROM systems WHERE mac='$MAC'")
 if [ -z $USER ] ; then
-   echo "MAC $MAC not found - Not managed."
+   log.debug "MAC $MAC not found - Not managed."
    exit 1
 else
-   echo "User $USER has MAC $MAC."
+   log.debug "User $USER has MAC $MAC."
 fi
 
 
 # Looks up the user configuration and characterics
 CONFIG=($(sqlite -separator " " $SQDB "SELECT * FROM users WHERE user='$USER'" ))
 if [ -z $CONFIG ] ; then
-   echo "This should not happen - user $USER exists in 'systems' and does not exist in 'users'."
+   log.error "This should not happen - user $USER exists in 'systems' and does not exist in 'users'."
    exit 1
 fi
-echo "Config array result: ${CONFIG[*]}"
-echo "Array syntax: USER - DUR/WKDY - DUR/WKND - HR/INI - HR/EOD - TOKENS/WKDY - TOKENS/WKND"
+log.debug "Config array result: ${CONFIG[*]}"
+log.debug "Array syntax: USER - DUR/WKDY - DUR/WKND - HR/INI - HR/EOD - TOKENS/WKDY - TOKENS/WKND"
 
 
 # Transforms the array into human-readable variables.
@@ -104,20 +120,20 @@ echo rm /dev/shm/$UUID >> /dev/shm/$UUID
 
 # Is the access request during authorized hours?
 if [[ $HOUR_NOW -lt $HOUR_INI || $HOUR_NOW -ge $HOUR_EOD ]] ; then
-   echo "You are outside the authorized hours. Request access between $HOUR_INI and $HOUR_EOD"
+   log.debug "You are outside the authorized hours. Request access between $HOUR_INI and $HOUR_EOD"
    exit 0
 else
-   echo "Valid time; moving on"
+   log.debug "Valid time; moving on"
 fi
 
 
 # Checks for weekdays or weekends
 if [[ $WKND_DAYS =~ $TODAY ]] ; then
-   echo "DOW: Weekend"
+   log.debug "DOW: Weekend"
    AUTHORIZED_HOURS=$DUR_WKND
    TOKENS_AUTHORIZED=$TOKEN_WKND
 else
-   echo "DOW: Weekday"
+   log.debug "DOW: Weekday"
    AUTHORIZED_HOURS=$DUR_WKDY
    TOKENS_AUTHORIZED=$TOKEN_WKDY
 fi
@@ -125,22 +141,26 @@ fi
 
 # Checks if is there any already active token
 TOKEN_EPOCH=$(TZ="$TIMEZONE" sqlite $SQDB "SELECT MAX(strftime ('%s', token_epoch, )) FROM tokens WHERE token_epoch >= DATE('now', 'localtime') AND user = '$USER'" )
-let GOOD_THRU="$TOKEN_EPOCH+3600*$AUTHORIZED_HOURS"
+GOOD_THRU=$(($TOKEN_EPOCH+3600*$AUTHORIZED_HOURS))
 EPOCH_NOW=$(date +"%s")
-let SECONDS_VALID="$GOOD_THRU-$EPOCH_NOW"
-echo "Current epoch $EPOCH_NOW, Token issued at $TOKEN_EPOCH and valid until $GOOD_THRU. Valid for more $SECONDS_VALID seconds."
+SECONDS_VALID=$(($GOOD_THRU-$EPOCH_NOW))
+log.debug "Current epoch $EPOCH_NOW, Token issued at $TOKEN_EPOCH and valid until $GOOD_THRU. Valid for more $SECONDS_VALID seconds."
 if [[ $EPOCH_NOW -gt $TOKEN_EPOCH && $EPOCH_NOW -lt $GOOD_THRU ]] ; then
-   echo "There's a valid and active token. Exiting, no action taken."
+   log.debug "There's a valid and active token. Exiting, no action taken."
+   print.html "Ainda h&aacute; uma sess&atilde; ativa! Viva o Cachuco!"
    exit 0
 fi
 
 
 # Check for token balance
 TOKENS_CONSUMED_TODAY=$(TZ="$TIMEZONE" sqlite $SQDB "SELECT COUNT(*) FROM tokens WHERE DATE(token_epoch, 'localtime') >= DATE('now', 'localtime') AND user = '$USER'")
-echo "Tokens Consumed Today: $TOKENS_CONSUMED_TODAY"
-echo "Total allowed Tokens for today: $TOKENS_AUTHORIZED"
+TOKEN_BALANCE=$(($TOKENS_AUTHORIZED-$TOKENS_CONSUMED_TODAY))
+log.debug "Tokens Consumed Today: $TOKENS_CONSUMED_TODAY"
+log.debug "Total allowed Tokens for today: $TOKENS_AUTHORIZED"
 if [ $TOKENS_CONSUMED_TODAY -ge $TOKENS_AUTHORIZED ] ; then
-   echo "You are out of token quota. Allowed tokens: $TOKENS_AUTHORIZED, consumed tokens: $TOKENS_CONSUMED_TODAY"
+   log.debug "You are out of token quota. Allowed tokens: $TOKENS_AUTHORIZED, consumed tokens: $TOKENS_CONSUMED_TODAY"
+   print.html "<center>Voc&ecirc; consumiu as $TOKENS_CONSUMED_TODAY sess&otilde;es de hoje :-("
+   print.html "Mas &acirc;nimo: Amanh&atilde; tem mais :-)</center>"
    exit 1
 fi
 
@@ -148,23 +168,27 @@ fi
 # Present a (rudimentary) form prompting for a token.
 if [ $FORM_ACTION != "actionstart" ] ; then
    cat << EOF
-<H2>Do you want to request a token?</H2>
+<H2><P>Hoje voc&ecirc; pode iniciar $TOKEN_BALANCE sess&otilde;es de $AUTHORIZED_HOURS horas cada.
+<P>Voc&ecirc; quer iniciar uma sess&atilde;o?</H2>
 <FORM ACTION='/cgi-bin/vcurfew1.cgi' METHOD='GET'>
 <INPUT TYPE='hidden' NAME='action' VALUE='start'>
-<INPUT TYPE='submit' VALUE='Request Access'>
+<INPUT TYPE='submit' VALUE='Iniciar Sess&atilde;o'>
 </FORM>
 EOF
    exit 0
 else
    # Button pressed - Issue the access token
    UUID=$(uuid)
-   let HOURS_UNTIL_EOD="$HOUR_EOD-$HOUR_NOW"
+   HOURS_UNTIL_EOD=$(($HOUR_EOD-$HOUR_NOW))
    if [ $HOURS_UNTIL_EOD -le $AUTHORIZED_HOURS ] ; then
-      echo "Access allowed until $HOUR_EOD hours".
+      log.debug "Access allowed until $HOUR_EOD hours".
+      print.html "Autorizando acesso at&eacute; &agrave;s $HOUR_EOD horas."
       net_unlock
       cat /dev/shm/$UUID | TZ=$TIMEZONE at $HOUR_EOD:00
    else
-      echo "Authorizing $AUTHORIZED_HOURS hours, good thru $(TZ=$TIMEZONE date -d "+$AUTHORIZED_HOURS hours" +"%Hh%M")."
+      log.debug "Authorizing $AUTHORIZED_HOURS hours, good thru $(TZ=$TIMEZONE date -d "+$AUTHORIZED_HOURS hours" +"%Hh%M")."
+      print.html "Iniciando sess&atilde;o de $AUTHORIZED_HOURS horas. V&aacute;lida at&eacute; &agrave;s $(TZ=$TIMEZONE date -d "+$AUTHORIZED_HOURS hours" +"%Hh%M")."
+      print.html "O p&atilde;rp&atilde;r e seus computadores te desejam um bom uso!"
       net_unlock
       cat /dev/shm/$UUID | at NOW + $AUTHORIZED_HOURS hours
    fi
