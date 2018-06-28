@@ -168,7 +168,8 @@ fi
 # Present a (rudimentary) form prompting for a token.
 if [ $FORM_ACTION != "actionstart" ] ; then
    cat << EOF
-<H2><P>Hoje voc&ecirc; pode iniciar $TOKEN_BALANCE sess&otilde;es de $AUTHORIZED_HOURS horas cada.
+<H2><P>Voc&ecirc; tem um saldo de $TOKEN_BALANCE sess&otilde;es (de $TOKENS_AUTHORIZED no total)
+<BR>de $AUTHORIZED_HOURS horas cada.
 <P>Voc&ecirc; quer iniciar uma sess&atilde;o?</H2>
 <FORM ACTION='/cgi-bin/vcurfew1.cgi' METHOD='GET'>
 <INPUT TYPE='hidden' NAME='action' VALUE='start'>
