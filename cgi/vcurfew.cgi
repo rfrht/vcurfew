@@ -1,9 +1,17 @@
 #!/bin/bash
 
-set -e -x
+set -e
 
-echo "Content-type: text/plain"
+echo "Content-type: text/html"
 echo ""
+
+
+# Sanitize form entries
+if [ ! -z ${QUERY_STRING[0]} ] ; then
+   FORM_ACTION=$(echo ${QUERY_STRING[0]} | tr -dc '[:alpha:]' )
+else
+   FORM_ACTION=0
+fi
 
 
 # Load initial setup
@@ -12,6 +20,11 @@ source /etc/vcurfew/config.txt
 
 # Redirect STDERR to STDOUT, so errors are printed in the resulting page.
 exec 2>&1
+
+
+# Loads HTML header and body
+cat /etc/vcurfew/html/header.html
+cat /etc/vcurfew/html/body.html
 
 
 # Disable internationalizations (and potential syntax issues)
@@ -30,6 +43,7 @@ if [ $TESTWRITE == "yes" ] ; then
       exit 1
    fi
 fi
+
 
 # Translate the IP address to a MAC address. Sanitizes the values.
 MAC=$(arp -an $REMOTE_ADDR | awk '{gsub(/:/, "", $4); print toupper($4)}')
@@ -63,7 +77,7 @@ HOUR_INI=${CONFIG[3]}
 HOUR_EOD=${CONFIG[4]}
 TOKEN_WKDY=${CONFIG[5]}
 TOKEN_WKND=${CONFIG[6]}
-HOUR_NOW=$(TZ="$TIMEZONE" date +"%H")
+HOUR_NOW=$(TZ="$TIMEZONE" date +"%-H")
 TODAY=$(TZ="$TIMEZONE" date +"%a")
 WKND_DAYS="Sat Sun"
 
@@ -77,8 +91,12 @@ for i in $(sqlite $SQDB "SELECT mac FROM systems WHERE user='$USER'" | sed 's/..
 # if ! iptables -nvL | grep "MAC $i" ; then
 #    iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j DROP
 # fi
-   echo "echo sudo /sbin/iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j ACCEPT"
-   echo "echo sudo /sbin/iptables -D FORWARD -i $INTERFACE -m mac --mac-source $i -j ACCEPT" >> /dev/shm/$UUID
+   # run right now
+   sudo /sbin/iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j ACCEPT
+   sudo /sbin/iptables -t nat -D PREROUTING -i $INTERFACE ! -d $CAPTIVE_PORTAL -m mac --mac-source $i -p tcp --dport 80 -j DNAT --to $CAPTIVE_PORTAL:8081
+   # Schedule for at job
+   echo "sudo /sbin/iptables -D FORWARD -i $INTERFACE -m mac --mac-source $i -j ACCEPT" >> /dev/shm/$UUID
+   echo "sudo /sbin/iptables -t nat -I PREROUTING -i $INTERFACE ! -d $CAPTIVE_PORTAL -m mac --mac-source $i -p tcp --dport 80 -j DNAT --to $CAPTIVE_PORTAL:8081" >> /dev/shm/$UUID
 done
 echo rm /dev/shm/$UUID >> /dev/shm/$UUID
 }
@@ -127,16 +145,27 @@ if [ $TOKENS_CONSUMED_TODAY -ge $TOKENS_AUTHORIZED ] ; then
 fi
 
 
-# Issue the access token
-UUID=$(uuid)
-let "HOURS_UNTIL_EOD=$HOUR_EOD-$HOUR_NOW"
-if [ $HOURS_UNTIL_EOD -le $AUTHORIZED_HOURS ] ; then
-   echo "Access allowed until $HOUR_EOD hours".
-   net_unlock
-   cat /dev/shm/$UUID | TZ=$TIMEZONE at $HOUR_EOD:00
+# Present a (rudimentary) form prompting for a token.
+if [ $FORM_ACTION != "actionstart" ] ; then
+   cat << EOF
+<H2>Do you want to request a token?</H2>
+<FORM ACTION='/cgi-bin/vcurfew1.cgi' METHOD='GET'>
+<INPUT TYPE='hidden' NAME='action' VALUE='start'>
+<INPUT TYPE='submit' VALUE='Request Access'>
+</FORM>
+EOF
+   exit 0
 else
-   echo "Authorizing $AUTHORIZED_HOURS hours, good thru $(TZ=$TIMEZONE date -d "+$AUTHORIZED_HOURS hours" +"%Hh%M")."
-   net_unlock
-   cat /dev/shm/$UUID | at NOW + $AUTHORIZED_HOURS hours
+   # Button pressed - Issue the access token
+   UUID=$(uuid)
+   let HOURS_UNTIL_EOD="$HOUR_EOD-$HOUR_NOW"
+   if [ $HOURS_UNTIL_EOD -le $AUTHORIZED_HOURS ] ; then
+      echo "Access allowed until $HOUR_EOD hours".
+      net_unlock
+      cat /dev/shm/$UUID | TZ=$TIMEZONE at $HOUR_EOD:00
+   else
+      echo "Authorizing $AUTHORIZED_HOURS hours, good thru $(TZ=$TIMEZONE date -d "+$AUTHORIZED_HOURS hours" +"%Hh%M")."
+      net_unlock
+      cat /dev/shm/$UUID | at NOW + $AUTHORIZED_HOURS hours
+   fi
 fi
-

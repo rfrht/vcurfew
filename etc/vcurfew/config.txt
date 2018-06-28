@@ -5,3 +5,4 @@ URLPREFIX=
 SQDB=/etc/vcurfew/vcurfew.db
 SQLITEHISTORY=
 TESTWRITE=no
+CAPTIVE_PORTAL=
