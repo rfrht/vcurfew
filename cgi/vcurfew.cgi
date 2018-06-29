@@ -70,6 +70,7 @@ log.debug "MAC equals $MAC"
 USER=$(sqlite $SQDB "SELECT user FROM systems WHERE mac='$MAC'")
 if [ -z $USER ] ; then
    log.debug "MAC $MAC not found - Not managed."
+   print.html "Hello! You are not managed."
    exit 1
 else
    log.debug "User $USER has MAC $MAC."
