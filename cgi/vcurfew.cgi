@@ -70,6 +70,7 @@ log.debug "MAC equals $MAC"
 USER=$(sqlite $SQDB "SELECT user FROM systems WHERE mac='$MAC'")
 if [ -z $USER ] ; then
    log.debug "MAC $MAC not found - Not managed."
+   print.html "Ol&aacute;! Voc&ecirc; n&atilde;o &eacute; gerenciado."
    exit 1
 else
    log.debug "User $USER has MAC $MAC."
@@ -146,8 +147,9 @@ EPOCH_NOW=$(date +"%s")
 SECONDS_VALID=$(($GOOD_THRU-$EPOCH_NOW))
 log.debug "Current epoch $EPOCH_NOW, Token issued at $TOKEN_EPOCH and valid until $GOOD_THRU. Valid for more $SECONDS_VALID seconds."
 if [[ $EPOCH_NOW -gt $TOKEN_EPOCH && $EPOCH_NOW -lt $GOOD_THRU ]] ; then
+   EXPIRES_AT=$(TZ=$TIMEZONE date +"%R" --date="@$GOOD_THRU")
    log.debug "There's a valid and active token. Exiting, no action taken."
-   print.html "Ainda h&aacute; uma sess&atilde; ativa! Viva o Cachuco!"
+   print.html "Ainda h&aacute; uma sess&atilde;o ativa, v&aacute;lida at&eacute; &agrave;s $EXPIRES_AT ! Viva o Cachuco!"
    exit 0
 fi
 
