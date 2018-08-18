@@ -14,51 +14,9 @@ else
 fi
 
 
-# Prepare debug messages parsing
-log.debug () {
-if [ $DEBUG == "true" ] ; then
-   set -e -x
-   echo DEBUG: $@
-fi
-}
-
-log.error () {
-echo ERROR: $@
-}
-
-print.html () {
-   echo "<H2><P>$@</P></H2>"
-}
-
 # Load initial setup
 source /etc/vcurfew/config.txt
-
-
-# Redirect STDERR to STDOUT, so errors are printed in the resulting page.
-exec 2>&1
-
-
-# Loads HTML header and body
-cat /etc/vcurfew/html/header.html
-cat /etc/vcurfew/html/body.html
-
-
-# Disable internationalizations (and potential syntax issues)
-for i in LC_PAPER LC_MONETARY LC_NUMERIC LC_MEASUREMENT LC_TIME LANG LANGUAGE TZ ; do 
-   unset $i
-done
-
-
-if [ $TESTWRITE == "yes" ] ; then
-   # Test if sqlite has the correct permissions
-   if sqlite $SQDB "CREATE TABLE test(test,integer)" ; then
-      sqlite $SQDB "DROP TABLE test"
-   else
-      log.error "sqlite does not have write permission in file $SQDB and its directory."
-      log.error "Check permissions and try again."
-      exit 1
-   fi
-fi
+source /etc/vcurfew/functions.sh
 
 
 # Translate the IP address to a MAC address. Sanitizes the values.
@@ -186,13 +144,12 @@ else
    if [ $HOURS_UNTIL_EOD -le $AUTHORIZED_HOURS ] ; then
       log.debug "Access allowed until $HOUR_EOD hours".
       print.html "Autorizando acesso at&eacute; &agrave;s $HOUR_EOD horas."
-      net_unlock
-      cat /dev/shm/$UUID | TZ=$TIMEZONE at $HOUR_EOD:00
+      net_unlock $HOUR_EOD:00
    else
       log.debug "Authorizing $AUTHORIZED_HOURS hours, good thru $(TZ=$TIMEZONE date -d "+$AUTHORIZED_HOURS hours" +"%Hh%M")."
       print.html "Iniciando sess&atilde;o de $AUTHORIZED_HOURS horas. V&aacute;lida at&eacute; &agrave;s $(TZ=$TIMEZONE date -d "+$AUTHORIZED_HOURS hours" +"%Hh%M")."
       print.html "O p&atilde;rp&atilde;r e seus computadores te desejam um bom uso!"
-      net_unlock
-      cat /dev/shm/$UUID | at NOW + $AUTHORIZED_HOURS hours
+      let AUTHORIZED_MINUTES=$AUTHORIZED_HOURS*60
+      net_unlock NOW + $AUTHORIZED_MINUTES minutes
    fi
 fi
