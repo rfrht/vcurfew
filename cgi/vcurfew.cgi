@@ -57,26 +57,6 @@ TODAY=$(TZ="$TIMEZONE" date +"%a")
 WKND_DAYS="Sat Sun"
 
 
-# Function - Unlocks internet, write the token and schedules the next
-# curfew implementation. Currently this is only a stub (echoing).
-net_unlock() {
-sqlite $SQDB "INSERT INTO tokens VALUES ('$USER', datetime('now', 'localtime'), 1)"
-for i in $(sqlite $SQDB "SELECT mac FROM systems WHERE user='$USER'" | sed 's/..\B/&:/g') ; do
-# TODO: ENSURE THAT BLOCKING RULE EXISTS AND IS PRESENT.
-# if ! iptables -nvL | grep "MAC $i" ; then
-#    iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j DROP
-# fi
-   # run right now
-   sudo /sbin/iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j ACCEPT
-   sudo /sbin/iptables -t nat -D PREROUTING -i $INTERFACE ! -d $CAPTIVE_PORTAL -m mac --mac-source $i -p tcp --dport 80 -j DNAT --to $CAPTIVE_PORTAL:8081
-   # Schedule for at job
-   echo "sudo /sbin/iptables -D FORWARD -i $INTERFACE -m mac --mac-source $i -j ACCEPT" >> /dev/shm/$UUID
-   echo "sudo /sbin/iptables -t nat -I PREROUTING -i $INTERFACE ! -d $CAPTIVE_PORTAL -m mac --mac-source $i -p tcp --dport 80 -j DNAT --to $CAPTIVE_PORTAL:8081" >> /dev/shm/$UUID
-done
-echo rm /dev/shm/$UUID >> /dev/shm/$UUID
-}
-
-
 # Is the access request during authorized hours?
 if [[ $HOUR_NOW -lt $HOUR_INI || $HOUR_NOW -ge $HOUR_EOD ]] ; then
    log.debug "You are outside the authorized hours. Request access between $HOUR_INI and $HOUR_EOD"

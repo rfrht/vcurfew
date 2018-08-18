@@ -7,6 +7,10 @@ cat /etc/vcurfew/html/body.html
 exec 2>&1
 
 
+if [ $DEBUG == "true" ] ; then
+   set -e -x
+fi
+
 # Disable internationalizations (and potential syntax issues)
 for i in LC_PAPER LC_MONETARY LC_NUMERIC LC_MEASUREMENT LC_TIME LANG LANGUAGE TZ ; do
    unset $i
@@ -16,7 +20,6 @@ done
 # Configure logging functions
 log.debug() {
 if [ $DEBUG == "true" ] ; then
-   set -e -x
    echo DEBUG: $@
 fi
 }
@@ -46,10 +49,6 @@ fi
 net_unlock() {
 UUID=$(uuid)
 for i in $(sqlite $SQDB "SELECT mac FROM systems WHERE user='$USER'" | sed 's/..\B/&:/g') ; do
-   if [ -z $i ] ; then
-      log.error "O usu&aacute;rio $USER n&atilde;o existe - Imposs&iacute;vel liberar acesso."
-      exit 1
-   else
 # TODO: ENSURE THAT BLOCKING RULE EXISTS AND IS PRESENT.
 # if ! iptables -nvL | grep "MAC $i" ; then
 #    iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j DROP
@@ -60,10 +59,19 @@ for i in $(sqlite $SQDB "SELECT mac FROM systems WHERE user='$USER'" | sed 's/..
    # Schedule for at job
    echo "sudo /sbin/iptables -D FORWARD -i $INTERFACE -m mac --mac-source $i -j ACCEPT" >> /dev/shm/$UUID
    echo "sudo /sbin/iptables -t nat -I PREROUTING -i $INTERFACE ! -d $CAPTIVE_PORTAL -m mac --mac-source $i -p tcp --dport 80 -j DNAT --to $CAPTIVE_PORTAL:8081" >> /dev/shm/$UUID
-   fi
 done
-sqlite $SQDB "INSERT INTO tokens VALUES ('$USER', datetime('now', 'localtime'), $MINUTES)"
-echo rm /dev/shm/$UUID >> /dev/shm/$UUID
-log.debug "Executando net_unlock() com $@"
-cat /dev/shm/$UUID | TZ=$TIMEZONE at $@
+
+if [ -z $AUTHORIZED_MINUTES ]; then
+   AUTHORIZED_MINUTES = 0
+fi
+
+if [ ! -e /dev/shm/$UUID ] ; then
+   log.error "O usu&aacute;rio $USER n&atilde;o existe - Imposs&iacute;vel liberar acesso."
+   exit 1
+else
+   sqlite $SQDB "INSERT INTO tokens VALUES ('$USER', datetime('now', 'localtime'), $AUTHORIZED_MINUTES)"
+   echo rm /dev/shm/$UUID >> /dev/shm/$UUID
+   log.debug "Executando net_unlock() com $@"
+   cat /dev/shm/$UUID | TZ=$TIMEZONE at $@
+fi
 }
