@@ -2,6 +2,13 @@
 echo "Content-type: text/html"
 echo ""
 
+
+# Do we have a SHA1 set? If not, halt and catch fire.
+if [ -z $TOKENSHA1 ] ; then
+   log.error "Please configure a SHA1 for the one-time passwords. Ensure to install oathtool too."
+   exit 1
+fi
+
 # Are we actually processing something here?
 if [ "$REQUEST_METHOD" != "POST" ] ; then
    cat /etc/vcurfew/html/addtoken.html
