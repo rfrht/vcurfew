@@ -113,7 +113,7 @@ Here, you will need to first create a default negation rule of the controlled de
     # iptables -I FORWARD -i eth0.4 -m mac --mac-source 77:88:99:AA:BB:CC -j DROP
     # iptables -t nat -I PREROUTING -i eth0.4 ! -d 192.168.1.3 -m mac --mac-source 77:88:99:AA:BB:CC -p tcp --dport 80 -j DNAT --to 192.168.1.3:8081
 
-## The captive portal.
+## The captive portal
 In order to be friendly with your network devices (and better user experience), the `iptables` will intercept the traffic to a local HTTP server and cause a HTTP 302 redirect to the traffic. That will (should) trigger a captive portal login in your device.
 If using `lighttpd`, there are a few suggesting configurations, in order to redirect the traffic to `vcurfew`:
 
@@ -129,10 +129,12 @@ $SERVER["socket"] == "192.168.1.3:8081" {
 }
 ```
 
+## Emergency / Out of band tokens
+There are also provisions for issuing out-of-band tokens for a user. Access the CGI `oob.cgi` and fill the fields accordingly. The code was developed using TOTP OAUTH tokens and it requires the package `oathtool`. Define a SHA1 seed that will be used for generating tokens in `/etc/vcurfew/config.txt` in the `OTPSHA1` field. Use the [FreeOTP](https://freeotp.github.io/) app to generate the TOTP tokens used as the authentication code, using the same SHA1 signature. Ensure that your router date/time is in sync up to second, otherwise the tokens will be out of sync and the codes will not be accepted.
+
 ## TODO
 * Web UI for user
 * Web UI for admin
 * User Balance web page
 * User History web page
 * Admin add Credit tokens
-* Emergency tokens

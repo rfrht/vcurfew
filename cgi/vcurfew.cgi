@@ -14,51 +14,9 @@ else
 fi
 
 
-# Prepare debug messages parsing
-log.debug () {
-if [ $DEBUG == "true" ] ; then
-   set -e -x
-   echo DEBUG: $@
-fi
-}
-
-log.error () {
-echo ERROR: $@
-}
-
-print.html () {
-   echo "<H2><P>$@</P></H2>"
-}
-
 # Load initial setup
 source /etc/vcurfew/config.txt
-
-
-# Redirect STDERR to STDOUT, so errors are printed in the resulting page.
-exec 2>&1
-
-
-# Loads HTML header and body
-cat /etc/vcurfew/html/header.html
-cat /etc/vcurfew/html/body.html
-
-
-# Disable internationalizations (and potential syntax issues)
-for i in LC_PAPER LC_MONETARY LC_NUMERIC LC_MEASUREMENT LC_TIME LANG LANGUAGE TZ ; do 
-   unset $i
-done
-
-
-if [ $TESTWRITE == "yes" ] ; then
-   # Test if sqlite has the correct permissions
-   if sqlite $SQDB "CREATE TABLE test(test,integer)" ; then
-      sqlite $SQDB "DROP TABLE test"
-   else
-      log.error "sqlite does not have write permission in file $SQDB and its directory."
-      log.error "Check permissions and try again."
-      exit 1
-   fi
-fi
+source /etc/vcurfew/functions.sh
 
 
 # Translate the IP address to a MAC address. Sanitizes the values.
@@ -99,26 +57,6 @@ TODAY=$(TZ="$TIMEZONE" date +"%a")
 WKND_DAYS="Sat Sun"
 
 
-# Function - Unlocks internet, write the token and schedules the next
-# curfew implementation. Currently this is only a stub (echoing).
-net_unlock() {
-sqlite $SQDB "INSERT INTO tokens VALUES ('$USER', datetime('now', 'localtime'), 1)"
-for i in $(sqlite $SQDB "SELECT mac FROM systems WHERE user='$USER'" | sed 's/..\B/&:/g') ; do
-# TODO: ENSURE THAT BLOCKING RULE EXISTS AND IS PRESENT.
-# if ! iptables -nvL | grep "MAC $i" ; then
-#    iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j DROP
-# fi
-   # run right now
-   sudo /sbin/iptables -I FORWARD -i $INTERFACE -m mac --mac-source $i -j ACCEPT
-   sudo /sbin/iptables -t nat -D PREROUTING -i $INTERFACE ! -d $CAPTIVE_PORTAL -m mac --mac-source $i -p tcp --dport 80 -j DNAT --to $CAPTIVE_PORTAL:8081
-   # Schedule for at job
-   echo "sudo /sbin/iptables -D FORWARD -i $INTERFACE -m mac --mac-source $i -j ACCEPT" >> /dev/shm/$UUID
-   echo "sudo /sbin/iptables -t nat -I PREROUTING -i $INTERFACE ! -d $CAPTIVE_PORTAL -m mac --mac-source $i -p tcp --dport 80 -j DNAT --to $CAPTIVE_PORTAL:8081" >> /dev/shm/$UUID
-done
-echo rm /dev/shm/$UUID >> /dev/shm/$UUID
-}
-
-
 # Is the access request during authorized hours?
 if [[ $HOUR_NOW -lt $HOUR_INI || $HOUR_NOW -ge $HOUR_EOD ]] ; then
    log.debug "You are outside the authorized hours. Request access between $HOUR_INI and $HOUR_EOD"
@@ -147,6 +85,7 @@ EPOCH_NOW=$(date +"%s")
 SECONDS_VALID=$(($GOOD_THRU-$EPOCH_NOW))
 log.debug "Current epoch $EPOCH_NOW, Token issued at $TOKEN_EPOCH and valid until $GOOD_THRU. Valid for more $SECONDS_VALID seconds."
 if [[ $EPOCH_NOW -gt $TOKEN_EPOCH && $EPOCH_NOW -lt $GOOD_THRU ]] ; then
+   EXPIRES_AT=$(TZ=$TIMEZONE date +"%R" --date="@$GOOD_THRU")
    log.debug "There's a valid and active token. Exiting, no action taken."
    print.html "There's still a valid and active token!"
    exit 0
@@ -168,11 +107,12 @@ fi
 # Present a (rudimentary) form prompting for a token.
 if [ $FORM_ACTION != "actionstart" ] ; then
    cat << EOF
-<H2><P>Hoje voc&ecirc; pode iniciar $TOKEN_BALANCE sess&otilde;es de $AUTHORIZED_HOURS horas cada.
-<P>Voc&ecirc; quer iniciar uma sess&atilde;o?</H2>
+<H2><P>You have $TOKEN_BALANCE available sessions (of $TOKENS_AUTHORIZED total)
+<BR>with $AUTHORIZED_HOURS hours each.
+<P>Do you want to start a new session?</H2>
 <FORM ACTION='/cgi-bin/vcurfew1.cgi' METHOD='GET'>
 <INPUT TYPE='hidden' NAME='action' VALUE='start'>
-<INPUT TYPE='submit' VALUE='Iniciar Sess&atilde;o'>
+<INPUT TYPE='submit' VALUE='Start Session'>
 </FORM>
 EOF
    exit 0
@@ -182,13 +122,12 @@ else
    HOURS_UNTIL_EOD=$(($HOUR_EOD-$HOUR_NOW))
    if [ $HOURS_UNTIL_EOD -le $AUTHORIZED_HOURS ] ; then
       log.debug "Access allowed until $HOUR_EOD hours".
-      print.html "Autorizando acesso at&eacute; &agrave;s $HOUR_EOD horas."
-      net_unlock
-      cat /dev/shm/$UUID | TZ=$TIMEZONE at $HOUR_EOD:00
+      print.html "Access granted until $HOUR_EOD hours."
+      net_unlock $HOUR_EOD:00
    else
       log.debug "Authorizing $AUTHORIZED_HOURS hours, good thru $(TZ=$TIMEZONE date -d "+$AUTHORIZED_HOURS hours" +"%Hh%M")."
-      print.html "Authorizing $AUTHORIZED_HOURS hours, good thru $(TZ=$TIMEZONE date -d "+$AUTHORIZED_HOURS hours" +"%Hh%M")."
-      net_unlock
-      cat /dev/shm/$UUID | at NOW + $AUTHORIZED_HOURS hours
+      print.html "Starting a $AUTHORIZED_HOURS hours session, good thru $(TZ=$TIMEZONE date -d "+$AUTHORIZED_HOURS hours" +"%Hh%M")."
+      let AUTHORIZED_MINUTES=$AUTHORIZED_HOURS*60
+      net_unlock NOW + $AUTHORIZED_MINUTES minutes
    fi
 fi
