@@ -1,8 +1,6 @@
 # vcurfew - Keeping your guests (or kids) under control
 
 
-== WORK IN PROGRESS ==
-
 ----
 ## What is vcurfew?
 `vcurfew` aims to be a lightweight, simple, extensible network access control built on top of a sqlite database.
@@ -133,8 +131,4 @@ $SERVER["socket"] == "192.168.1.3:8081" {
 There are also provisions for issuing out-of-band tokens for a user. Access the CGI `oob.cgi` and fill the fields accordingly. The code was developed using TOTP OAUTH tokens and it requires the package `oathtool`. Define a SHA1 seed that will be used for generating tokens in `/etc/vcurfew/config.txt` in the `OTPSHA1` field. Use the [FreeOTP](https://freeotp.github.io/) app to generate the TOTP tokens used as the authentication code, using the same SHA1 signature. Ensure that your router date/time is in sync up to second, otherwise the tokens will be out of sync and the codes will not be accepted.
 
 ## TODO
-* Web UI for user
-* Web UI for admin
-* User Balance web page
 * User History web page
-* Admin add Credit tokens
