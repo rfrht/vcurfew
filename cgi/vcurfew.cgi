@@ -59,7 +59,7 @@ WKND_DAYS="Sat Sun"
 
 # Is the access request during authorized hours?
 if [[ $HOUR_NOW -lt $HOUR_INI || $HOUR_NOW -ge $HOUR_EOD ]] ; then
-   log.debug "You are outside the authorized hours. Request access between $HOUR_INI and $HOUR_EOD"
+   print.html "You are outside authorized hours. Request access between $HOUR_INI and $HOUR_EOD"
    exit 0
 else
    log.debug "Valid time; moving on"
