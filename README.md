@@ -1,4 +1,4 @@
-# vcurfew - Keeping your guests (or kids) under control
+# vcurfew - Keeping your guests (or kids) internet under tab
 
 
 ----
